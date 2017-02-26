@@ -1,6 +1,6 @@
 # EasyPR
 
-EasyPR是一个中文的开源车牌识别系统，其目标是成为一个简单、高效、准确的车牌识别引擎。
+EasyPR是一个开源的中文车牌识别系统，其目标是成为一个简单、高效、准确的车牌识别库。
 
 相比于其他的车牌识别系统，EasyPR有如下特点：
 
@@ -10,23 +10,65 @@ EasyPR是一个中文的开源车牌识别系统，其目标是成为一个简�
 
 ### 更新
 
-本次更新是1.3 测试版，主要改进在于几个方面：
+本次更新是EasyPR 1.5正式版本，相比beta版本有以下几点更新：
 
-1.增加了50张左右的新图片。见下图：
+1.修正了SVM训练异常的问题！现在1.5版本也可以自由的使用SVM训练了。这个问题确实是opencv的bug，详见[讨论](https://github.com/opencv/opencv/issues/5054)，在此感谢tka同学的告知。注意，3.2的opencv也修正了这个问题，如果你用3.2版本的话，也可以。但是不清楚3.2版本是否会引入其他的问题，在目前的EasyPR版本里，即便用3.0或者3.1版本也可以规避训练异常的问题。
 
-![新图片](resources/doc/res/new50.jpg)
+2.支持linux和mac编译，如果碰到问题请在issue里提问。
 
-2.增加了extreme_test文件夹，这里的图片以极端难处理情况为主。见下图：
+3.增加一个无需配置opencv的[懒人版](http://git.oschina.net/easypr/EasyPR/attach_files)。仅仅支持vs2013，也只能在debug和x86下运行，其他情况的话还是得配置opencv。感谢范文捷同学的帮助。页面里的两个文件都要下载，下载后用[7zip](http://www.7-zip.org/)解压。
 
-![extreme_test](resources/doc/res/extreme_test.jpg)
+下面是beta版本的更新内容：
 
-3.重构了整体架构，将EasyPR核心以静态库的方式编译，分离出通用接口等等。此部分改善由Micooz贡献。见下图：
+1.增加了一种新的基于文字定位的定位方法 (MSER), 在面对低对比度，低光照以及大图像上有较强的鲁棒性。
 
-![架构重构](resources/doc/res/arch.jpg)
+* 夜间的车牌图像
 
-4.代码优化，提高易懂与可读性。
+![夜间的车牌图像](resources/doc/res/night_1.jpg)
 
-下个版本会正式发布1.3 正式版。
+* 对比度非常低的图像
+
+![对比度非常低的图像](resources/doc/res/contrast_1.jpg)
+
+* 近距离的图像
+
+![近距离的图像](resources/doc/res/near_1.jpg)
+
+* 高分辨率的图像
+
+![高分辨率的图像](resources/doc/res/big_1.jpg)
+
+2.更加合理的评价协议。结合新增的GroundTruth文件与ICDAR2003的协议，使得整体评价指标更为合理。通用数据集里同时增加了近50张新图片。文字定位方法在面对这些复杂图片时比先前的SOBEL+COLOR的方法定位率提升了27个百分点。
+
+实际运行时，使用了文字定位与颜色定位的结合，最终对256张的测试图片的测试结果如下：
+
+![v1.5版运行结果](resources/doc/res/v1.5_result.jpg)
+
+3.使用了非极大值抑制算法去除相邻的车牌，使得最终输出变的合理。即便使用多个定位方法，最终也只会输出一个车牌，而且是可能性最大的车牌。
+
+4.基于局部空间的大津阈值算法与自适应阈值算法，提升了文字分割与分子识别的准确率。
+
+* 车牌图像
+
+![车牌图像](resources/doc/res/not_avg_contrast.jpg)
+
+* 普通大津阈值结果
+
+![普通大津阈值结果](resources/doc/res/normal_ostu.jpg)
+
+* 空间大津阈值结果
+
+![空间大津阈值结果](resources/doc/res/spatial_ostu.jpg)
+
+5.新的SVM模型与特征（LBP），提升了车牌判断的鲁棒性，新的中文ANN识别模型，提升了中文识别的整体准确率近15个百分点。
+
+6.增加了Grid Search方法，可以进行自动调参。
+
+7.首次增加了多线程支持，基于OpenMP的文字定位方法，在最终的识别速度上，比原先的单线程方法提高了接近2倍。
+
+8.替换了一部分中文注释，使得windows下的visual studio在面对全部以LF结尾的文件时，也能成功通过编译。目前的程序只要opencv配置正确，gitosc上通过zip下载下来的程序可以直接通过编译并运行。
+
+关于本次改动的具体内容可以看博客中的[介绍](http://www.cnblogs.com/subconscious/p/5637735.html)。
 
 ### 跨平台
 
@@ -34,15 +76,15 @@ EasyPR是一个中文的开源车牌识别系统，其目标是成为一个简�
 
 |版本 | 开发者 | 版本 | 地址 
 |------|-------|-------|-------
-| android |  goldriver  |  1.3  |  [linuxxx/EasyPR_Android](https://github.com/linuxxx/EasyPR_Android)
-| linux | Micooz  |  1.3  |  已跟EasyPR整合
+| android |  goldriver  |  1.4  |  [linuxxx/EasyPR_Android](https://github.com/linuxxx/EasyPR_Android)
+| linux | Micooz  |  1.5  |  已跟EasyPR整合
 | ios | zhoushiwei |  1.3  |  [zhoushiwei/EasyPR-iOS](https://github.com/zhoushiwei/EasyPR-iOS)
-| mac | zhoushiwei,Micooz |  1.3  | 已跟EasyPR整合
+| mac | zhoushiwei,Micooz |  1.5  | 已跟EasyPR整合
 | java | fan-wenjie |  1.2  | [fan-wenjie/EasyPR-Java](https://github.com/fan-wenjie/EasyPR-Java)
 
 ### 兼容性
 
-EasyPR是基于opencv2.4.8版本开发的，2.4.8以上的版本应该可以兼容，以前的版本可能会存在不兼容的现象。opencv3.0的版本还没有经过测试。
+当前EasyPR是基于opencv3.0版本开发的，3.0及以上的版本应该可以兼容，以前的版本可能会存在不兼容的现象。
 
 ### 例子
 
@@ -57,6 +99,86 @@ EasyPR是基于opencv2.4.8版本开发的，2.4.8以上的版本应该可以兼�
 接着，我们对图块进行OCR过程，在EasyPR中，叫做字符识别（CharsRecognize）。我们得到了一个包含车牌颜色与字符的字符串：
 
 “蓝牌：苏EUK722”
+
+### 示例
+
+EasyPR的调用非常简单，下面是一段示例代码:
+```c++
+	CPlateRecognize pr;
+	pr.setResultShow(false);
+	pr.setDetectType(PR_DETECT_CMSER);
+     
+	vector<CPlate> plateVec;
+	Mat src = imread(filepath);
+	int result = pr.plateRecognize(src, plateVec);
+```
+
+我们首先创建一个CPlateRecognize的对象pr，接着设置pr的属性。
+
+```c++
+	pr.setResultShow(false);
+```
+
+这句话设置EasyPR是否打开结果展示窗口，如下图。设置为true就是打开，否则就是关闭。在需要观看定位结果时，建议打开，快速运行时关闭。
+
+![EasyPR 输出窗口](resources/doc/res/window.png)
+
+```c++
+	pr.setDetectType(PR_DETECT_CMSER);
+```
+
+这句话设置EasyPR采用的车牌定位算法。CMER代表文字定位方法，SOBEL和COLOR分别代表边缘和颜色定位方法。可以通过"|"符号结合。
+
+```c++
+	pr.setDetectType(PR_DETECT_COLOR | PR_DETECT_SOBEL);
+```
+
+除此之外，还可以有一些其他的属性值设置：
+
+```c++
+	pr.setLifemode(true);
+```
+
+这句话设置开启生活模式，这个属性在定位方法为SOBEL时可以发挥作用，能增大搜索范围，提高鲁棒性。
+
+```c++
+	pr.setMaxPlates(4);
+```
+
+这句话设置EasyPR最多查找多少个车牌。当一副图中有大于n个车牌时，EasyPR最终只会输出可能性最高的n个。
+
+下面来看pr的方法。plateRecognize()这个方法有两个参数，第一个代表输入图像，第二个代表输出的车牌CPlate集合。
+
+```c++
+	vector<CPlate> plateVec;
+	Mat src = imread(filepath);
+	int result = pr.plateRecognize(src, plateVec);
+```
+
+当返回结果result为0时，代表识别成功，否则失败。
+
+CPlate类包含了车牌的各种信息，其中重要的如下：
+
+```c++
+	CPlate plate = plateVec.at(i);
+	Mat plateMat = plate.getPlateMat();
+	RotatedRect rrect = plate.getPlatePos();
+	string license = plate.getPlateStr();
+```
+
+plateMat代表车牌图像，rrect代表车牌的可旋转矩形位置，license代表车牌字符串，例如“蓝牌：苏EUK722”。
+
+这里说下如何去阅读如下图的识别结果。
+
+![EasyPR DetectResults](resources/doc/res/one_image_detect.jpg)
+
+第1行代表的是图片的文件名。
+
+第2行代表GroundTruth车牌，用后缀（g）表示。第3行代表EasyPR检测车牌，用后缀（d）表示。两者形成一个配对，第4行代表两者的字符差距。
+
+下面同上。本图片中有3个车牌，所有共有三个配对。最后的Recall等指标代表的是整幅图片的定位评价，考虑了三个配对的结果。
+
+有时检测车牌的部分会用“无车牌”与“No string”替代。“无车牌”代表“定位不成功”，“No string”代表“定位成功但字符分割失败”。
 
 ### 版权
 
@@ -75,6 +197,7 @@ EasyPR的resources/image/general_test文件夹下的图片数据遵循[GDSL协�
 | src |  所有源文件
 | include | 所有头文件
 | test | 测试程序
+| etc | 中文字符映射表
 | resources/model | 机器学习的模型
 | resources/train | 训练数据与说明
 | resources/image | 测试用的图片
@@ -123,105 +246,23 @@ EasyPR的resources/image/general_test文件夹下的图片数据遵循[GDSL协�
 
 ### 使用
 
-EasyPR的所有源代码可在Github上的[项目主页](https://github.com/liuruoze/EasyPR)直接打包下载得到，如果你熟悉git版本控制工具，可以使用下面的命令来克隆代码：
+请参考[这里](Usage.md)
 
-```
-$ git clone https://github.com/liuruoze/EasyPR
-```
-
-EasyPR支持当前主流的操作系统，通常不需要对源代码进行更改就可以编译运行，尽管如此，不同平台上IDE的配置也是有很大差异的，下面主要说明Windows，Linux以及Mac OS下的编译方法。
-
-**Note**: 无论在哪个平台使用EasyPR，都要安装对应平台版本的[opencv](http://opencv.org/)，建议使用正式稳定版本。
-
-#### Windows
-
-Windows下的配置以Visual Studio 2013为例，其他版本大同小异。
-
-* 打开项目目录下的解决方案文件`EasyPR.sln`。
-
-**Note**: 该解决方案会加载两个项目，一个是`EasyPR`，用于编译src/下的源文件生成静态库`libeasypr.lib`；另一个是`Demo`，用来编译test/下的main.cpp，并链接libeasypr.lib生成可执行程序。
-
-* 配置OpenCV库
-
-OpenCV for Windows通常会将使用VS编译好二进制文件放到`opencv\build\`目录下。
-
-EasyPR两个项目的Debug和Release模式都会引用opencv.props属性表，用属性表管理器打开，修改用户宏里面的`OpenCV`项，使之指向你的OpenCV的build目录。
-
-**Note**: 如果你使用的opencv版本不是`2.4.11`，请修改属性表下的`链接器`-`输入`-`附加依赖项`，调整为对应版本的lib。
-
-**Note**: 如果你要使用X64的opencv库或者其他版本的VS，请修改`链接器`-`常规`-`附加库目录`，调整为对应的版本。
-
-* 生成解决方案
-
-默认情况下，生成出现的`libeasypr.lib`和`easypr_test.exe`会放在`bin\debug(release)`下。
-
-**Note**: 直接双击运行程序会出现找不到opencv动态库的情况，这个时候只需要在`opencv\build\x86(x64)\vc(..)\bin`下找到缺失的dll放到执行目录即可。
-
-#### Linux & Mac OS
-
-EasyPR使用CMake在Linux及Mac OS下进行构建，确保系统安装了最新版本的[CMake](http://cmake.org)，然后在任意目录(将存放编译所需的Makefile)执行：
-
-```
-$ cmake path/to/EasyPR
-```
-
-完成后在同一目录下执行编译命令：
-
-```
-$ make
-```
-
-CMake将首先把EasyPR/src下的源文件编译打包为静态库`libeasypr.a`，然后编译`test/main.cpp`，链接静态库生成可执行程序`easypr_test`。
-
------
-
-**Note**: *你可以直接利用EasyPR/include和这个静态库来调用EasyPR提供的函数接口编写自己的程序。*
-
-运行Demo：
-
-```
-$ ./easypr_test // 进入菜单交互界面
-$ ./easypr_test ? // 查看CLI帮助
-```
-
-### 命令行示例
-
-可以向`easypr_test[.exe]`传递命令行参数来完成你想要的工作，目前Demo支持四个子命令，其他功能如字符识别将逐步加入。对于每个子命令的帮助信息可以传入`-h`参数来获取。
-
-**车牌识别**
-
-```
-# 利用提供的SVM和ANN模型来识别一张图片里面的所有车牌
-$ ./easypr_test recognize -p resources/image/plate_recognize.jpg --svm resources/model/svm.xml --ann resources/model/ann.xml
-# 或者更简单一些(注意模型路径)
-$ ./easypr_test recognize -p resources/image/plate_recognize.jpg
-```
-
-**SVM训练**
-
-```
-# 首先生成训练用图片
-$ ./easypr_test svm --create --in raw/ --out learn/
-# 接下来给训练用图片打标签，自动把“是”车牌的图块放到has/，“不是”车牌的图块放到no/里，注意这里要使用svm.xml的原因是为了简化你的分类工作量，你也可以手动对图块分类
-$ ./easypr_test svm --tag --source=learn/ --has=has/ --no=no/ --svm=resources/model/svm.xml
-# 接下来就是训练过程了，--divide意味着训练程序会对两个目录下的图块进行划分，默认是70%的训练数据，30%的测试数据，分别放在
-# has/train(70%), has/test; 
-# no/train(70%), no/test
-# Note: 目前你需要自己建立子目录
-$ ./easypr_test svm --train --has-plate=has/ --no-plate=no/ --divide --svm=save/to/svm.xml
-```
+### 获取帮助
 
 详细的开发与教程请见[介绍与开发教程](http://www.cnblogs.com/subconscious/p/3979988.html)。
 
 如果你在使用过程中遇到任何问题，请在[这里](https://github.com/liuruoze/EasyPR/issues)告诉我们。
 
+EasyPR讨论QQ群号是：一群：366392603(已满)，二群：583022188， 加前请注明EasyPR学习讨论。
+
 ### Contributors
 
-* liuruoze：1.0-1.2版作者，1.3版整合工作
+* liuruoze：1.0-1.2，1.5版作者
 
-* 海豚嘎嘎：1.3alpha-beta版主要贡献者，提升了车牌定位与字符识别的准确率
+* 海豚嘎嘎(车主之家)：1.3版算法贡献者，提升了车牌定位与字符识别的准确率
 
-* Micooz：架构优化，代码重构，linux与mac的跨平台编译等
+* Micooz：1.3-1.4版架构重构，linux与mac支持，opencv3.0支持，utf-8编码转换
 
 * jsxyhelu：deface版本一
 
@@ -231,8 +272,8 @@ $ ./easypr_test svm --train --has-plate=has/ --no-plate=no/ --divide --svm=save/
 
 * 阿水：1.3版整合，数据标注等工作
 
+* fan-wenjie：1.5版opencv整合版提供者
+
 ### 鸣谢
 
-taotao1233，邱锦山，唐大侠，jsxyhelu，如果有一天(zhoushiwei)，学习奋斗，袁承志，
-
-圣城小石匠，goldriver，Micooz，梦里时光，Rain Wang，任薛纪，ahccom，星夜落尘，海豚嘎嘎
+taotao1233，邱锦山，唐大侠，jsxyhelu，如果有一天(zhoushiwei)，学习奋斗，袁承志，圣城小石匠，goldriver，Micooz，梦里时光，Rain Wang，任薛纪，ahccom，星夜落尘，海豚嘎嘎(车主之家)，刘超，以及所有对EasyPR贡献数据的热心同学。

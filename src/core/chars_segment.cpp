@@ -1,22 +1,20 @@
-#include "easypr/chars_segment.h"
-#include "easypr/util.h"
+#include "easypr/core/chars_segment.h"
+#include "easypr/core/chars_identify.h"
+#include "easypr/core/core_func.h"
+#include "easypr/core/params.h"
+#include "easypr/config.h"
 
 using namespace std;
 
-/*! \namespace easypr
-Namespace where all the C++ EasyPR functionality resides
-*/
 namespace easypr {
 
 const float DEFAULT_BLUEPERCEMT = 0.3f;
 const float DEFAULT_WHITEPERCEMT = 0.1f;
 
 CCharsSegment::CCharsSegment() {
-  // cout << "CCharsSegment" << endl;
   m_LiuDingSize = DEFAULT_LIUDING_SIZE;
   m_theMatWidth = DEFAULT_MAT_WIDTH;
 
-  //！车牌颜色判断参数
   m_ColorThreshold = DEFAULT_COLORTHRESHOLD;
   m_BluePercent = DEFAULT_BLUEPERCEMT;
   m_WhitePercent = DEFAULT_WHITEPERCEMT;
@@ -24,7 +22,7 @@ CCharsSegment::CCharsSegment() {
   m_debug = DEFAULT_DEBUG;
 }
 
-//! 字符尺寸验证
+
 bool CCharsSegment::verifyCharSizes(Mat r) {
   // Char sizes 45x90
   float aspect = 45.0f / 90.0f;
@@ -49,12 +47,14 @@ bool CCharsSegment::verifyCharSizes(Mat r) {
     return false;
 }
 
-//! 字符预处理
+
 Mat CCharsSegment::preprocessChar(Mat in) {
   // Remap image
   int h = in.rows;
   int w = in.cols;
-  int charSize = CHAR_SIZE;  //统一每个字符的大小
+
+  int charSize = CHAR_SIZE;
+
   Mat transformMat = Mat::eye(2, 3, CV_32F);
   int m = max(w, h);
   transformMat.at<float>(0, 2) = float(m / 2 - w / 2);
@@ -64,108 +64,233 @@ Mat CCharsSegment::preprocessChar(Mat in) {
   warpAffine(in, warpImage, transformMat, warpImage.size(), INTER_LINEAR,
              BORDER_CONSTANT, Scalar(0));
 
-  //！ 将所有的字符调整成统一的尺寸
   Mat out;
   resize(warpImage, out, Size(charSize, charSize));
 
   return out;
 }
 
-// implementation of otsu algorithm
-// author: onezeros(@yahoo.cn)
-// reference: Rafael C. Gonzalez. Digital Image Processing Using MATLAB
 
-int staticIndex = 0;
-int iTag = 0;
+//! choose the bese threshold method for chinese
+void CCharsSegment::judgeChinese(Mat in, Mat& out, Color plateType) {
+  
+  Mat auxRoi = in;
+  float valOstu = -1.f, valAdap = -1.f;
+  Mat roiOstu, roiAdap;
+  bool isChinese = true;
+  if (1) {
+    if (BLUE == plateType) {
+      threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY + CV_THRESH_OTSU);
+    }
+    else if (YELLOW == plateType) {
+      threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+    }
+    else if (WHITE == plateType) {
+      threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+    }
+    else {
+      threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+    }
+    roiOstu = preprocessChar(roiOstu);
+    if (0) {
+      imshow("roiOstu", roiOstu);
+      waitKey(0);
+      destroyWindow("roiOstu");
+    }
+    auto character = CharsIdentify::instance()->identifyChinese(roiOstu, valOstu, isChinese);
+  }
+  if (1) {
+    if (BLUE == plateType) {
+      adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 3, 0);
+    }
+    else if (YELLOW == plateType) {
+      adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 3, 0);
+    }
+    else if (WHITE == plateType) {
+      adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 3, 0);
+    }
+    else {
+      adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 3, 0);
+    }
+    roiAdap = preprocessChar(roiAdap);
+    auto character = CharsIdentify::instance()->identifyChinese(roiAdap, valAdap, isChinese);
+  }
 
-//! 字符分割与排序
-int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec) {
-  // 输入图片无数据，返回ErrorCode=0x01
+  std::cout << "valOstu: " << valOstu << std::endl;
+  std::cout << "valAdap: " << valAdap << std::endl;
+
+  if (valOstu >= valAdap) {
+    out = roiOstu;
+  }
+  else {
+    out = roiAdap;
+  }
+
+}
+
+bool slideChineseWindow(Mat& image, Rect mr, Mat& newRoi, Color plateType, float slideLengthRatio, bool useAdapThreshold) {
+  std::vector<CCharacter> charCandidateVec;
+  
+  Rect maxrect = mr;
+  Point tlPoint = mr.tl();
+
+  bool isChinese = true;
+  int slideLength = int(slideLengthRatio * maxrect.width);
+  int slideStep = 1;
+  int fromX = 0;
+  fromX = tlPoint.x;
+  
+  for (int slideX = -slideLength; slideX < slideLength; slideX += slideStep) {
+    float x_slide = 0;
+
+    x_slide = float(fromX + slideX);
+
+    float y_slide = (float)tlPoint.y;
+    Point2f p_slide(x_slide, y_slide);
+
+    //cv::circle(image, p_slide, 2, Scalar(255), 1);
+
+    int chineseWidth = int(maxrect.width);
+    int chineseHeight = int(maxrect.height);
+
+    Rect rect(Point2f(x_slide, y_slide), Size(chineseWidth, chineseHeight));
+
+    if (rect.tl().x < 0 || rect.tl().y < 0 || rect.br().x >= image.cols || rect.br().y >= image.rows)
+      continue;
+
+    Mat auxRoi = image(rect);
+
+    Mat roiOstu, roiAdap;
+    if (1) {
+      if (BLUE == plateType) {
+        threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY + CV_THRESH_OTSU);
+      }
+      else if (YELLOW == plateType) {
+        threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+      }
+      else if (WHITE == plateType) {
+        threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+      }
+      else {
+        threshold(auxRoi, roiOstu, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+      }
+      roiOstu = preprocessChar(roiOstu, kChineseSize);
+
+      CCharacter charCandidateOstu;
+      charCandidateOstu.setCharacterPos(rect);
+      charCandidateOstu.setCharacterMat(roiOstu);
+      charCandidateOstu.setIsChinese(isChinese);
+      charCandidateVec.push_back(charCandidateOstu);
+    }
+    if (useAdapThreshold) {
+      if (BLUE == plateType) {
+        adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 3, 0);
+      }
+      else if (YELLOW == plateType) {
+        adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 3, 0);
+      }
+      else if (WHITE == plateType) {
+        adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 3, 0);
+      }
+      else {
+        adaptiveThreshold(auxRoi, roiAdap, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 3, 0);
+      }
+      roiAdap = preprocessChar(roiAdap, kChineseSize);
+
+      CCharacter charCandidateAdap;
+      charCandidateAdap.setCharacterPos(rect);
+      charCandidateAdap.setCharacterMat(roiAdap);
+      charCandidateAdap.setIsChinese(isChinese);
+      charCandidateVec.push_back(charCandidateAdap);
+    }
+
+  }
+
+  CharsIdentify::instance()->classifyChinese(charCandidateVec);
+
+  double overlapThresh = 0.1;
+  NMStoCharacter(charCandidateVec, overlapThresh);
+
+  if (charCandidateVec.size() >= 1) {
+    std::sort(charCandidateVec.begin(), charCandidateVec.end(),
+      [](const CCharacter& r1, const CCharacter& r2) {
+      return r1.getCharacterScore() > r2.getCharacterScore();
+    });
+
+    newRoi = charCandidateVec.at(0).getCharacterMat();
+    return true;
+  }
+
+  return false;
+
+}
+
+
+int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec, Color color) {
   if (!input.data) return 0x01;
 
-  int w = input.cols;
-  int h = input.rows;
-
-  Mat tmpMat = input(Rect_<double>(w * 0.1, h * 0.1, w * 0.8, h * 0.8));
-
-  //判断车牌颜色以此确认threshold方法
-  Color plateType = getPlateType(tmpMat, true);
+  Color plateType = color;
 
   Mat input_grey;
   cvtColor(input, input_grey, CV_BGR2GRAY);
 
-  Mat img_threshold;
-  if (BLUE == plateType) {
-    // cout << "BLUE" << endl;
-    img_threshold = input_grey.clone();
-
-    int w = input_grey.cols;
-    int h = input_grey.rows;
-    Mat tmp = input_grey(Rect_<double>(w * 0.1, h * 0.1, w * 0.8, h * 0.8));
-    int threadHoldV = ThresholdOtsu(tmp);
-    // utils::imwrite("E:/img_inputgray2.jpg", input_grey);
-
-    threshold(input_grey, img_threshold, threadHoldV, 255, CV_THRESH_BINARY);
-    // utils::imwrite("E:/img_threshold.jpg", img_threshold);
-
-    // threshold(input_grey, img_threshold, 5, 255, CV_THRESH_OTSU +
-    // CV_THRESH_BINARY);
-
-  } else if (YELLOW == plateType) {
-    // cout << "YELLOW" << endl;
-    img_threshold = input_grey.clone();
-    int w = input_grey.cols;
-    int h = input_grey.rows;
-    Mat tmp = input_grey(Rect_<double>(w * 0.1, h * 0.1, w * 0.8, h * 0.8));
-    int threadHoldV = ThresholdOtsu(tmp);
-    utils::imwrite("resources/image/tmp/inputgray2.jpg", input_grey);
-
-    threshold(input_grey, img_threshold, threadHoldV, 255,
-              CV_THRESH_BINARY_INV);
-
-    // threshold(input_grey, img_threshold, 10, 255, CV_THRESH_OTSU +
-    // CV_THRESH_BINARY_INV);
-  } else if (WHITE == plateType) {
-    // cout << "WHITE" << endl;
-    /*img_threshold = input_grey.clone();
-    int w = input_grey.cols;
-    int h = input_grey.rows;
-    Mat tmp = input_grey(Rect(w*0.1, h*0.1, w*0.8, h*0.8));
-    int threadHoldV = ThresholdOtsu(tmp);
-    utils::imwrite("resources/image/tmp/inputgray2.jpg", input_grey);*/
-
-    threshold(input_grey, img_threshold, 10, 255,
-              CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
-  } else {
-    // cout << "UNKNOWN" << endl;
-    threshold(input_grey, img_threshold, 10, 255,
-              CV_THRESH_OTSU + CV_THRESH_BINARY);
+  if (0) {
+    imshow("plate", input_grey);
+    waitKey(0);
+    destroyWindow("plate");
   }
+
+  Mat img_threshold;
+
+
+  //if (BLUE == plateType) {
+  //  // cout << "BLUE" << endl;
+  //  img_threshold = input_grey.clone();
+
+  //  int w = input_grey.cols;
+  //  int h = input_grey.rows;
+  //  Mat tmp = input_grey(Rect_<double>(w * 0.1, h * 0.1, w * 0.8, h * 0.8));
+  //  int threadHoldV = ThresholdOtsu(tmp);
+  //  threshold(input_grey, img_threshold, threadHoldV, 255, CV_THRESH_BINARY);
+
+  //} else if (YELLOW == plateType) {
+  //  // cout << "YELLOW" << endl;
+  //  img_threshold = input_grey.clone();
+  //  int w = input_grey.cols;
+  //  int h = input_grey.rows;
+  //  Mat tmp = input_grey(Rect_<double>(w * 0.1, h * 0.1, w * 0.8, h * 0.8));
+  //  int threadHoldV = ThresholdOtsu(tmp);
+  //  // utils::imwrite("resources/image/tmp/inputgray2.jpg", input_grey);
+
+  //  threshold(input_grey, img_threshold, threadHoldV, 255,
+  //            CV_THRESH_BINARY_INV);
+
+  //} else if (WHITE == plateType) {
+  //  // cout << "WHITE" << endl;
+
+  //  threshold(input_grey, img_threshold, 10, 255,
+  //            CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
+  //} else {
+  //  // cout << "UNKNOWN" << endl;
+  //  threshold(input_grey, img_threshold, 10, 255,
+  //            CV_THRESH_OTSU + CV_THRESH_BINARY);
+  //}
+
+  img_threshold = input_grey.clone();
+  spatial_ostu(img_threshold, 8, 2, plateType);
 
   if (0) {
-    imshow("threshold", img_threshold);
+    imshow("plate", img_threshold);
     waitKey(0);
-    destroyWindow("threshold");
+    destroyWindow("plate");
   }
 
-  if (m_debug) {
-    stringstream ss(stringstream::in | stringstream::out);
-    ss << "resources/image/tmp/debug_char_threshold" << iTag << ".jpg";
-    utils::imwrite(ss.str(), img_threshold);
-  }
+  // remove liuding and hor lines
+  // also judge weather is plate use jump count
 
-  // 去除车牌上方的柳钉以及下方的横线等干扰
-  // 并且也判断了是否是车牌
-  // 并且在此对字符的跳变次数以及字符颜色所占的比重做了是否是车牌的判别条件
-  // 如果不是车牌，返回ErrorCode=0x02
   if (!clearLiuDing(img_threshold)) return 0x02;
+  //clearLiuDing(img_threshold);
 
-  if (m_debug) {
-    stringstream ss(stringstream::in | stringstream::out);
-    ss << "resources/image/tmp/debug_char_clearLiuDing" << iTag << ".jpg";
-    utils::imwrite(ss.str(), img_threshold);
-  }
-  iTag++;
 
   Mat img_contours;
   img_threshold.copyTo(img_contours);
@@ -179,7 +304,6 @@ int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec) {
   vector<vector<Point> >::iterator itc = contours.begin();
   vector<Rect> vecRect;
 
-  // 将不符合特定尺寸的字符块排除出去
   while (itc != contours.end()) {
     Rect mr = boundingRect(Mat(*itc));
     Mat auxRoi(img_threshold, mr);
@@ -188,13 +312,8 @@ int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec) {
     ++itc;
   }
 
-  // 如果找不到任何字符块，则返回ErrorCode=0x03
+
   if (vecRect.size() == 0) return 0x03;
-
-  // 对符合尺寸的图块按照从左到右进行排序;
-
-  /*vector<Rect> sortedRect;
-  SortRect(vecRect, sortedRect);*/
 
   vector<Rect> sortedRect(vecRect);
   std::sort(sortedRect.begin(), sortedRect.end(),
@@ -202,105 +321,85 @@ int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec) {
 
   size_t specIndex = 0;
 
-  //获得特殊字符对应的Rectt,如苏A的"A"
   specIndex = GetSpecificRect(sortedRect);
 
-  if (m_debug) {
-    if (specIndex < sortedRect.size()) {
-      Mat specMat(img_threshold, sortedRect[specIndex]);
-      stringstream ss(stringstream::in | stringstream::out);
-      ss << "resources/image/tmp/debug_specMat"
-         << ".jpg";
-      utils::imwrite(ss.str(), specMat);
-    }
-  }
-
-  //根据特定Rect向左反推出中文字符
-  //这样做的主要原因是根据findContours方法很难捕捉到中文字符的准确Rect，因此仅能
-  //退过特定算法来指定
   Rect chineseRect;
   if (specIndex < sortedRect.size())
     chineseRect = GetChineseRect(sortedRect[specIndex]);
   else
-    return -3;
+    return 0x04;
 
-  if (m_debug) {
-    Mat chineseMat(img_threshold, chineseRect);
-    stringstream ss(stringstream::in | stringstream::out);
-    ss << "resources/image/tmp/debug_chineseMat"
-       << ".jpg";
-    utils::imwrite(ss.str(), chineseMat);
+  if (0) {
+    rectangle(img_threshold, chineseRect, Scalar(255));
+    imshow("plate", img_threshold);
+    waitKey(0);
+    destroyWindow("plate");
   }
 
-  //新建一个全新的排序Rect
-  //将中文字符Rect第一个加进来，因为它肯定是最左边的
-  //其余的Rect只按照顺序去6个，车牌只可能是7个字符！这样可以避免阴影导致的“1”字符
   vector<Rect> newSortedRect;
   newSortedRect.push_back(chineseRect);
   RebuildRect(sortedRect, newSortedRect, specIndex);
 
-  if (newSortedRect.size() == 0) return -3;
+  if (newSortedRect.size() == 0) return 0x05;
+
+  bool useSlideWindow = true;
+  bool useAdapThreshold = true;
+  //bool useAdapThreshold = CParams::instance()->getParam1b();
 
   for (size_t i = 0; i < newSortedRect.size(); i++) {
     Rect mr = newSortedRect[i];
-    Mat auxRoi(img_threshold, mr);
 
-    if (1) {
-      auxRoi = preprocessChar(auxRoi);
-      if (m_debug) {
-        stringstream ss(stringstream::in | stringstream::out);
-        ss << "resources/image/tmp/debug_char_auxRoi_" << (i + staticIndex)
-           << ".jpg";
-        utils::imwrite(ss.str(), auxRoi);
+    // Mat auxRoi(img_threshold, mr);
+    Mat auxRoi(input_grey, mr);
+    Mat newRoi;
+
+    if (i == 0) {
+      if (useSlideWindow) {
+        float slideLengthRatio = 0.1f;
+        //float slideLengthRatio = CParams::instance()->getParam1f();
+        if (!slideChineseWindow(input_grey, mr, newRoi, plateType, slideLengthRatio, useAdapThreshold))
+          judgeChinese(auxRoi, newRoi, plateType);
       }
-      resultVec.push_back(auxRoi);
+      else
+        judgeChinese(auxRoi, newRoi, plateType);
     }
-  }
-  staticIndex += newSortedRect.size();
+    else {
+      if (BLUE == plateType) {  
+        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY + CV_THRESH_OTSU);
+      }
+      else if (YELLOW == plateType) {
+        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+      }
+      else if (WHITE == plateType) {
+        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
+      }
+      else {
+        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+      }
 
-  return 0;
-}
-
-//! 将Rect按位置从左到右进行排序
-int CCharsSegment::SortRect(const vector<Rect>& vecRect, vector<Rect>& out) {
-  vector<int> orderIndex;
-  vector<int> xpositions;
-
-  for (size_t i = 0; i < vecRect.size(); i++) {
-    orderIndex.push_back(i);
-    xpositions.push_back(vecRect[i].x);
-  }
-
-  int min = xpositions[0];
-  int minIdx = 0;
-  for (size_t i = 0; i < xpositions.size(); i++) {
-    min = xpositions[i];
-    minIdx = i;
-    for (size_t j = i; j < xpositions.size(); j++) {
-      if (xpositions[j] < min) {
-        min = xpositions[j];
-        minIdx = j;
+      newRoi = preprocessChar(newRoi);
+    }
+     
+    if (0) {
+      if (i == 0) {
+        imshow("input_grey", input_grey);
+        waitKey(0);
+        destroyWindow("input_grey");
+      }
+      if (i == 0) {
+        imshow("newRoi", newRoi);
+        waitKey(0);
+        destroyWindow("newRoi");
       }
     }
-    int aux_i = orderIndex[i];
-    int aux_min = orderIndex[minIdx];
-    orderIndex[i] = aux_min;
-    orderIndex[minIdx] = aux_i;
 
-    int aux_xi = xpositions[i];
-    int aux_xmin = xpositions[minIdx];
-    xpositions[i] = aux_xmin;
-    xpositions[minIdx] = aux_xi;
-  }
-
-  for (size_t i = 0; i < orderIndex.size(); i++) {
-    out.push_back(vecRect[orderIndex[i]]);
+    resultVec.push_back(newRoi);
   }
 
   return 0;
 }
 
-//! 根据特殊车牌来构造猜测中文字符的位置和大小
+
 Rect CCharsSegment::GetChineseRect(const Rect rectSpe) {
   int height = rectSpe.height;
   float newwidth = rectSpe.width * 1.15f;
@@ -315,7 +414,6 @@ Rect CCharsSegment::GetChineseRect(const Rect rectSpe) {
   return a;
 }
 
-//! 找出指示城市的字符的Rect，例如苏A7003X，就是"A"的位置
 int CCharsSegment::GetSpecificRect(const vector<Rect>& vecRect) {
   vector<int> xpositions;
   int maxHeight = 0;
@@ -337,8 +435,8 @@ int CCharsSegment::GetSpecificRect(const vector<Rect>& vecRect) {
     Rect mr = vecRect[i];
     int midx = mr.x + mr.width / 2;
 
-    //如果一个字符有一定的大小，并且在整个车牌的1/7到2/7之间，则是我们要找的特殊字符
-    //当前字符和下个字符的距离在一定的范围内
+    // use known knowledage to find the specific character
+    // position in 1/7 and 2/7
     if ((mr.width > maxWidth * 0.8 || mr.height > maxHeight * 0.8) &&
         (midx < int(m_theMatWidth / 7) * 2 &&
          midx > int(m_theMatWidth / 7) * 1)) {
@@ -349,9 +447,6 @@ int CCharsSegment::GetSpecificRect(const vector<Rect>& vecRect) {
   return specIndex;
 }
 
-//! 这个函数做两个事情
-//  1.把特殊字符Rect左边的全部Rect去掉，后面再重建中文字符的位置。
-//  2.从特殊字符Rect开始，依次选择6个Rect，多余的舍去。
 int CCharsSegment::RebuildRect(const vector<Rect>& vecRect,
                                vector<Rect>& outRect, int specIndex) {
   int count = 6;
@@ -362,4 +457,4 @@ int CCharsSegment::RebuildRect(const vector<Rect>& vecRect,
   return 0;
 }
 
-} /*! \namespace easypr*/
+}

@@ -11,16 +11,14 @@ using namespace std;
 int test_plate_locate() {
   cout << "test_plate_locate" << endl;
 
-  const string file = "resources/image/test.jpg";
+  const string file = "resources/image/plate_locate.jpg";
 
   cv::Mat src = imread(file);
-  
-  //TODO：原plateLocate需要被替换
 
   vector<cv::Mat> resultVec;
   CPlateLocate plate;
-  plate.setDebug(1);
-  plate.setLifemode(true);
+  //plate.setDebug(0);
+  //plate.setLifemode(true);
 
   int result = plate.plateLocate(src, resultVec);
   if (result == 0) {
@@ -41,10 +39,8 @@ int test_plate_judge() {
 
   cv::Mat src = imread("resources/image/plate_judge.jpg");
 
-  //可能是车牌的图块集合
   vector<cv::Mat> matVec;
 
-  //经过SVM判断后得到的图块集合
   vector<cv::Mat> resultVec;
 
   CPlateLocate lo;
@@ -53,8 +49,7 @@ int test_plate_judge() {
 
   int resultLo = lo.plateLocate(src, matVec);
 
-  if (0 != resultLo)
-    return -1;
+  if (0 != resultLo) return -1;
 
   cout << "plate_locate_img" << endl;
   size_t num = matVec.size();
@@ -65,12 +60,9 @@ int test_plate_judge() {
   }
   destroyWindow("plate_judge");
 
-  CPlateJudge ju;
-  ju.LoadModel("resources/model/svm.xml");
-  int resultJu = ju.plateJudge(matVec, resultVec);
+  int resultJu = PlateJudge::instance()->plateJudge(matVec, resultVec);
 
-  if (0 != resultJu)
-    return -1;
+  if (0 != resultJu) return -1;
 
   cout << "plate_judge_img" << endl;
   num = resultVec.size();
@@ -93,7 +85,7 @@ int test_plate_detect() {
   CPlateDetect pd;
   pd.setPDLifemode(true);
 
-  int result = pd.plateDetectDeep(src, resultVec);
+  int result = pd.plateDetect(src, resultVec);
   if (result == 0) {
     size_t num = resultVec.size();
     for (size_t j = 0; j < num; j++) {
@@ -114,30 +106,29 @@ int test_plate_recognize() {
   Mat src = imread("resources/image/test.jpg");
 
   CPlateRecognize pr;
-  pr.LoadANN("resources/model/ann.xml");
-  pr.LoadSVM("resources/model/svm.xml");
-
   pr.setLifemode(true);
-  pr.setDebug(true);
+  pr.setDebug(false);
+  pr.setMaxPlates(4);
+  //pr.setDetectType(PR_DETECT_COLOR | PR_DETECT_SOBEL);
+  pr.setDetectType(easypr::PR_DETECT_CMSER);
 
-  vector<string> plateVec;
+  //vector<string> plateVec;
+  vector<CPlate> plateVec;
 
   int result = pr.plateRecognize(src, plateVec);
+  //int result = pr.plateRecognizeAsText(src, plateVec);
   if (result == 0) {
     size_t num = plateVec.size();
     for (size_t j = 0; j < num; j++) {
-      cout << "plateRecognize: " << plateVec[j] << endl;
+      cout << "plateRecognize: " << plateVec[j].getPlateStr() << endl;
     }
   }
 
-  if (result != 0)
-    cout << "result:" << result << endl;
+  if (result != 0) cout << "result:" << result << endl;
 
   return result;
 }
-
+}
 }
 
-}
-
-#endif //EASYPR_PLATE_HPP
+#endif  // EASYPR_PLATE_HPP
